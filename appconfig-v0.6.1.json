@@ -1,0 +1,16 @@
+{
+  "appName": "RS3 OBS Casket Recorder",
+  "description": "Read-only Alt1 Treasure Trails reward confirmation controlling OBS Replay Buffer to save pre-opening footage, with reroll extension. No game automation.",
+  "appUrl": "http://127.0.0.1:8091/recorder-v0.6.1.html",
+  "configUrl": "http://127.0.0.1:8091/appconfig-v0.6.1.json",
+  "iconUrl": "http://127.0.0.1:8091/icon.png",
+  "defaultWidth": 450,
+  "defaultHeight": 760,
+  "minWidth": 360,
+  "minHeight": 450,
+  "maxWidth": 900,
+  "maxHeight": 1100,
+  "permissions": "pixel,gamestate",
+  "requestHandlers": [],
+  "activators": []
+}
