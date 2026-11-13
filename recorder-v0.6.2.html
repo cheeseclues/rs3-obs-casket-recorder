@@ -1,0 +1,96 @@
+<!doctype html>
+<!-- launcher-build-v0.6.2 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://127.0.0.1:4455; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+  <title>RS3 OBS Casket Recorder · v0.6.2</title>
+  <link rel="icon" href="icon.png"><link rel="stylesheet" href="style-v0.6.2.css">
+  <script src="detector-v0.6.2.js" defer></script><script src="app-v0.6.2.js" defer></script>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">ALT1 + OBS · V0.6.2</div>
+    <h1>RS3 Casket Recorder</h1>
+    <p>OBS Replay Buffer continuously retains the recent game footage, including BEFORE you open a casket. Alt1 saves a replay only after a verified Treasure Trails reward, never just a Puzzle casket click. Rerolls and subsequent rewards postpone saving until five seconds after the latest event. No RuneScape inputs are generated.</p>
+  </header>
+  <section class="panel">
+    <div class="statusline"><h2>Alt1 permissions</h2><span id="altstatus" class="status disconnected">Checking…</span></div>
+    <div id="permissions" class="muted compact">Checking screen-pixel and game-state permissions…</div>
+    <small>Install this page as an Alt1 app (Add App) and grant both <strong>Screen Pixels</strong> and <strong>Game State</strong> via the Alt1 app wrench or Settings. Chrome can test OBS but cannot detect RuneScape.</small>
+  </section>
+  <section class="panel">
+    <div class="statusline"><h2>OBS connection</h2><span id="status" class="status disconnected">Disconnected</span></div>
+    <label for="password">OBS WebSocket password</label>
+    <input type="password" id="password" autocomplete="off" placeholder="OBS → Tools → WebSocket Server Settings">
+    <small>Authentication is local. The password is only stored in browser localStorage if you explicitly enable remembering it; localStorage is not encrypted.</small>
+    <label class="checkrow"><input type="checkbox" id="rememberPassword"> <span>Remember OBS password on this computer</span></label>
+    <label class="checkrow"><input type="checkbox" id="autoConnect"> <span>Connect to OBS when this app opens (requires remembered password)</span></label>
+    <div class="buttons"><button id="forgetPassword" class="secondary">Forget saved password</button></div>
+    <div class="buttons"><button id="connect">Connect to OBS</button><button id="disconnect" class="secondary" disabled>Disconnect</button></div>
+    <div class="statusline statusafter"><strong>OBS recording</strong><span id="recordState" class="muted">Not checked</span></div>
+    <div class="buttons"><button id="test" class="secondary" disabled>Record 5-second test</button><button id="stop" class="danger" disabled>Stop our recording</button></div>
+  </section>
+  <section class="panel">
+    <div class="statusline"><h2>OBS Replay Buffer — pre-opening footage</h2><span id="bufferStatus" class="status disconnected">Not checked</span></div>
+    <p><strong>One-time OBS setup:</strong> Settings → Output → Enable Replay Buffer, then set <strong>Maximum Replay Time = 60 seconds</strong>. You can use another value, but set the same number below. Replay footage is saved to your OBS recording folder. The app starts the buffer automatically while OBS is connected.</p>
+    <label for="replaySeconds">OBS Maximum Replay Time (seconds; must match OBS)</label>
+    <input id="replaySeconds" type="number" min="20" max="180" step="1" value="60">
+    <label class="checkrow"><input id="autoBuffer" type="checkbox" checked> <span>Start/restore OBS Replay Buffer automatically</span></label>
+    <div class="buttons"><button id="bufferStart" class="secondary" disabled>Start Replay Buffer</button><button id="bufferSaveTest" class="secondary" disabled>Test: Save replay now</button></div>
+    <small>OBS saves the entire replay window (up to 60 s), not a trimmed five-second clip. Long sequences are split into potentially overlapping replay saves before the earliest footage could expire. Do not close this window during a pending reward save. Replay Buffer continuously encodes footage, which may add GPU load.</small>
+  </section>
+  <section class="panel">
+    <h2>Calibration tier</h2>
+    <label for="tierSelect">Choose the tier you are teaching Alt1</label>
+    <select id="tierSelect">
+      <option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option><option value="elite" selected>Elite</option><option value="master">Master</option>
+    </select>
+    <p class="muted compact">This selection affects calibration buttons only. Detection automatically checks every saved tier, with no manual switching.</p>
+    <pre id="tierSummary" class="tier-summary">Loading saved tier calibrations…</pre>
+  </section>
+  <section class="panel">
+    <h2>1 · Recognize each tier's casket icon (candidate only)</h2>
+    <p>For the selected tier, capture its own casket image. Icon matches alone <strong>never</strong> save a replay, since Puzzle caskets may look alike. Click <strong>Calibrate (3 seconds)</strong>, move your cursor to the <strong>center of the casket ICON in RuneScape</strong>, and leave it still. Do not open it during the countdown. Keep the same UI scale during detection.</p>
+    <div class="statusline"><strong>Calibration</strong><span id="calstatus" class="muted">Not calibrated</span></div>
+    <div class="buttons"><button id="calibrate">Calibrate in 3 seconds</button><button id="clear" class="secondary">Forget image</button></div>
+    <small>Only a 28×28 pixel patch is saved in local browser storage. No screenshots are uploaded.</small>
+  </section>
+  <section class="panel">
+    <h2>2 · Watch all calibrated clue tiers (Puzzle caskets excluded)</h2>
+    <label for="threshold">Image-match threshold: <output id="thresholdNumber">95%</output></label>
+    <input id="threshold" type="range" min="85" max="99" step="1" value="95">
+    <small>Higher is stricter. This recognizes a possible casket only; OBS starts only after the Treasure Trails reward window appears.</small>
+    <div class="statusline"><strong>Detection</strong><span id="detectStatus" class="muted">Stopped</span></div>
+    <div class="statusline"><strong>Last casket image match</strong><span id="confidence" class="muted">—</span></div>
+    <div class="buttons"><button id="watch">Start detection</button><button id="unwatch" class="secondary" disabled>Pause detection</button></div>
+    <label class="checkrow"><input id="autoWatch" type="checkbox" checked> <span><strong>Start detection automatically</strong> <span class="muted">When RuneScape links to Alt1, including after starting Windows or returning from lobby.</span></span></label>
+    <label class="checkrow"><input id="liveRecord" type="checkbox"> <span><strong>Enable automatic reward replay saves</strong> <span class="muted">Off by default. Otherwise log detections only.</span></span></label>
+    <small>Alt1 cannot read the item name from its icon alone. Clicking a Puzzle casket is ignored because opening a puzzle does not display the calibrated Treasure Trails reward interface. Each newly confirmed reward or reroll extends the pending replay-save deadline until five seconds afterward. Select a tier only to calibrate; all configured tiers are monitored simultaneously. OBS normal recordings are not touched.</small>
+  </section>
+  <section class="panel">
+    <h2>Required · Verify the actual Treasure Trails reward window</h2>
+    <p>To detect every clue tier, calibrate a representative reward window for each tier (or choose a truly shared visual detail). While a Treasure Trails reward window is already open, click <strong>Calibrate reward window (3 seconds)</strong>. Point at a fixed, distinctive part of the reward window (such as its title) that is not visible before opening the casket. Keep the RuneScape interface in the same position.</p>
+    <div class="statusline"><strong>Reward calibration</strong><span id="rewardStatus" class="muted">Not calibrated</span></div>
+    <div class="buttons"><button id="rewardCalibrate">Calibrate reward window in 3 seconds</button><button id="rewardClear" class="secondary">Forget reward image</button></div>
+    <label for="rewardThreshold">Reward match threshold: <output id="rewardThresholdNumber">96%</output></label>
+    <input type="range" id="rewardThreshold" min="85" max="99" value="96" step="1">
+    <div class="statusline"><strong>Reward-window detection</strong><span class="muted" id="rewardDetectStatus">Stopped</span></div><div class="statusline"><strong>Last reward match</strong><span class="muted" id="rewardConfidence">—</span></div>
+    <small>Only this reward-window confirmation may schedule an automatic replay save. Checks a small fixed area (52×52 pixels) for each distinct calibrated reward position about every 400 ms, faster after a click. Positions are grouped to reduce screen capture overhead. Records only on a new closed-to-open transition after a recent RuneScape click. No game inputs or process-memory access. For opening detection, start with the reward window closed; reroll clicks can still be recognized while it is open.</small>
+  </section>
+  <section class="panel">
+    <h2>Optional · Automatically extend recordings on rerolls</h2>
+    <p>With the selected tier's Treasure Trails reward window open, click <strong>Calibrate reroll button (3 seconds)</strong>, then hover over the CENTER of the <strong>Reroll</strong> button without clicking. The position is saved. Each player click near that button, while the reward window is recognized, moves the replay save deadline to five seconds after that click. No new OBS recording is started.</p>
+    <div class="statusline"><strong>Reroll button</strong><span class="muted" id="rerollStatus">Not calibrated</span></div>
+    <div class="buttons"><button id="rerollCalibrate">Calibrate reroll button in 3 seconds</button><button id="rerollClear" class="secondary">Forget reroll button</button></div>
+    <small>Requires the reward-window reference above. Only your actual RuneScape clicks are observed, no clicks are generated. Rerolls might be missed if the reward window isn't recognized or its layout changes.</small>
+  </section>
+  <section class="panel">
+    <div class="statusline"><h2>Activity log</h2><button id="copy" class="secondary small">Copy log</button></div>
+    <pre id="log" aria-live="polite"></pre>
+  </section>
+  <footer>Local only · <code>127.0.0.1:8091</code> serves the app · <code>127.0.0.1:4455</code> connects to OBS. No network access to Jagex, no process-memory reading, no simulated mouse clicks.</footer>
+</main>
+</body></html>

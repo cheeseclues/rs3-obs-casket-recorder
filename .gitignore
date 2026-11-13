@@ -1,10 +1,15 @@
+# Local startup logs and Python temporary files
+launcher.log
+python-http.*.log
 *.log
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+# Do not commit any personal video recordings or local secrets
 *.mp4
 *.mkv
-*.webm
+*.mov
 *.wav
-*.mp3
 .env
 .env.*
-node_modules/
-__pycache__/

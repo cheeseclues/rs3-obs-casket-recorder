@@ -1,65 +1,66 @@
-# RS3 OBS Casket Recorder v0.6.1 — Replay Buffer / Pre-roll
+# RS3 OBS Casket Recorder v0.6.2 — All five clue tiers
 
-OBS keeps recent gameplay footage **before** reward opening. Alt1 never starts OBS normal recording automatically; instead, when the calibrated **Treasure Trails reward interface** is detected after a player click, it schedules an OBS `SaveReplayBuffer` request five seconds after the most recent verified reward or reroll.
+Alt1 reads RuneScape screen pixels and observes real player clicks. When a calibrated Treasure Trails **reward interface** appears after a player click, the application asks OBS Studio to save its Replay Buffer **five seconds after the last recognized reward or reroll**. The saved replay includes moments before the opening. **The application never clicks or controls RuneScape**.
 
-## v0.6.1 save confirmation fix
+## What's new in v0.6.2
 
-OBS WebSocket SaveReplayBuffer acknowledges the request before the file is necessarily finalized. This release subscribes to the `ReplayBufferSaved` output event and logs the confirmed file path rather than the previous replay. A 10 s timeout/fallback checks for a changed path and warns if no new save can be confirmed. This prevents misleading `Replay 17-53-16.mp4` logs for a later reward. No changes to existing localStorage keys, calibration, or password behavior.
+- Separate casket-icon and reward-window image calibrations for **Easy, Medium, Hard, Elite and Master**. All calibrated tiers are monitored automatically; the selected tier only controls **which calibration to add or clear**.
+- Each tier can have an optional separately calibrated Reroll button position.
+- A **Tier calibration summary** shows which references are stored. A reward window, rather than a matching casket icon alone, is required to save an automatic replay; Puzzle caskets should not trigger a save.
+- Existing v0.6.1 **Elite** casket, reward-window and reroll calibrations are imported **once** from browser localStorage. Original legacy keys remain intact. Import is not retried after a tier has been intentionally cleared.
+- Reuses a single 52×52 pixel capture if multiple tiers have reward references at the same coordinates, to limit screen-reading overhead. Otherwise samples the distinct calibrated reward positions. Sampling is ~400 ms ordinarily and ~130 ms shortly after clicks.
+- Keeps OBS saved password setting, auto-connect, Replay Buffer controls, and save-confirmation logic from v0.6.1. Continues using **port 8091** and a unique versioned launch URL to avoid old Alt1 cached pages.
 
-## OBS one-time setup
+## Upgrade without losing Elite calibration
 
-1. OBS → **Settings → Output** → Enable **Replay Buffer** (may require Advanced output mode or supported recording encoder).
-2. Set **Maximum Replay Time** to **60 seconds**. With an especially high-bitrate 4K recording, ensure the replay memory limit is large enough.
-3. Set recording/replay path and quality as desired in OBS. For RuneScape-only audio, keep separate Application Audio Capture instead of desktop audio.
-4. Leave OBS WebSocket server on port **4455**, with authentication enabled.
-5. In the Alt1 app, set **OBS Maximum Replay Time** to the SAME number of seconds (default 60) and enable **Auto Replay Buffer**, **Start detection automatically**, **Enable automatic reward replay saves** and optional OBS auto-connect.
-6. The app starts the OBS Replay Buffer on connection. Check the status reads **Buffer running** before opening a casket. Click **Test: Save replay now** to verify that a video file is created by OBS.
+1. Close any older RS3 OBS Casket Recorder Alt1 windows.
+2. Stop the old Python HTTP server on port 8091, if running. (Ctrl+C in its PowerShell window.)
+3. Extract ZIP **root contents** into your existing recorder folder, overwriting the old files. Do not nest the new folder inside the old one.
+4. Double-click **Launch-Recorder.cmd** (Python 3.12+ required). It uses port 8091 and opens `recorder-v0.6.2.html` inside Alt1.
+5. Check the banner says `ALT1 + OBS · V0.6.2` and the activity log says `v0.6.2 loaded` and `Existing v0.6.1 calibration imported as Elite` on first startup.
+6. Set **Calibration tier** to Easy, Medium, Hard or Master; perform each tier's calibration as described below. Elite should already show `✓` for previously saved references.
 
-The app cannot read OBS's configured Replay Buffer length over the v5 WebSocket API, so match the duration manually. This matters for preventing older footage from rolling out.
+Manual Alt1 URL: `alt1://browser/http://127.0.0.1:8091/recorder-v0.6.2.html`
 
-## Installation (Windows)
+**Important:** Calibration data lives in Alt1 browser localStorage for `http://127.0.0.1:8091`. Don't change the host to `localhost` or the port if you want to retain your saved references/password. Keep the older app folder backed up until the new version has been verified in-game.
 
-Requirements: RuneScape 3, Alt1 Toolkit, OBS Studio with WebSocket enabled on local port 4455, and Python 3 on PATH.
+## Calibrate each tier once
 
-1. Clone or download this repository, and close any older Alt1 recorder window.
-2. Stop any older Python HTTP server occupying port **8091**. If upgrading, copy the new files into your existing recorder directory so the same local app URL and saved browser storage continue working.
-3. In OBS, enable Replay Buffer and the OBS WebSocket server (keep authentication enabled).
-4. Run **Launch-Recorder.cmd**. It starts a local Python server and opens Alt1's dedicated v0.6.1 URL.
-5. If needed, open `alt1://addapp/http://127.0.0.1:8091/appconfig-v0.6.1.json` to install the app and grant **Screen Pixels** and **Game State** permissions.
-6. Confirm the header **ALT1 + OBS · V0.6.1** and `v0.6.1 loaded` in the activity log. Configure OBS password, replay-buffer duration, calibrations and automatic detection once.
+For each tier, use the **Calibration tier** dropdown. It does not restrict live detection, which always checks **all** saved tiers.
 
-Using the **same host and port** (`127.0.0.1:8091`) retains existing browser localStorage credentials and calibrations; switching hosts or ports does not.
+1. With that tier's **Reward casket icon** available, click **Calibrate in 3 seconds**, then hover over the icon's center. This is the **optional casket candidate** reference; it cannot trigger OBS by itself.
+2. Open a real reward for that tier. With the reward interface still open, click **Calibrate reward window in 3 seconds** and hover over a distinctive, fixed detail (for example a unique title decoration). The reward window is the **required** verification reference for that tier. Avoid empty slots, moving rewards or the mouse tooltip.
+3. Optionally, while the corresponding reward is open, click **Calibrate reroll button** and hover at the center of the reroll button. Rerolls require a recognized reward window to extend the replay save.
+4. Check the Tier calibration summary (✓ = saved, — = not calibrated). Switch tiers and repeat for the next one.
 
-Manual Alt1 URL: `alt1://browser/http://127.0.0.1:8091/recorder-v0.6.1.html`
+**If multiple tiers have identical reward-window headers**, calibrating the same distinctive detail for each tier is fine. The app compares all stored references and uses the most likely match. If a tier's reward window is not calibrated and its appearance differs from the saved ones, it may be missed even if its casket image is recognized. For full tier coverage, calibrate each reward window explicitly.
 
-## How it handles Puzzle caskets
+## OBS setup
 
-The casket image is merely a candidate. A Puzzle casket can look similar; **no replay is saved unless the separately calibrated Treasure Trails reward window opens** following a real player click. If that template matches a different UI element, it could still save false positives; calibrate a reward-only detail.
+1. OBS **Settings → Output → Replay Buffer**: enable and set **Maximum Replay Time**. A larger buffer (e.g. 20–60 s) protects multi-opening sequences. Set the same duration in the recorder UI.
+2. OBS **Tools → WebSocket Server Settings**: enable WebSocket on port 4455; retain password authentication.
+3. In the recorder, enable **Start/restore OBS Replay Buffer automatically**, **Start detection automatically**, and **Enable automatic reward replay saves**. Automatic password remembering uses localStorage and is **not encrypted**.
+4. Make a test replay using the manual **Test: Save replay now** button. Before relying on it for rare rewards, try each tier in-game and verify the generated file includes the opening.
 
-## Short and long sequences
+The app saves the whole Replay Buffer (not a precisely trimmed clip) and automatically requests overlapping intermediate replay saves for long chains. Its `ReplayBufferSaved` event handler confirms the actual saved file path instead of reporting a prior replay.
 
-- A reward opens: schedule replay save **5 s after** the event.
-- A reroll or another recognized reward: reset deadline to **5 s after** that event.
-- Long sequences: an intermediate replay save is requested about every **65% of the configured buffer period**. This can produce overlapping videos, not one seamless combined video. It avoids overwriting older footage if the configured OBS buffer is at least as long as the value in the app. For a 60 s buffer the interval is ~39 s.
-- The `SaveReplayBuffer` request saves the **entire buffered replay window**, not a precise five-second clip. Exact trimming needs an FFmpeg post-processing step.
-- OBS continuously encodes the buffered video; this uses more hardware resources than the old on-demand mode. If RuneScape movement responsiveness or lobby disconnects return, test with replay buffering switched off.
-- There is no guarantee of capturing every reward: fast UI transitions, unreadable screen frames, app downtime or OBS failures may cause misses.
+## Known limitations / security
 
-## Technical and safety
-
-- Only screen pixels and recent RuneScape clicks are read via the Alt1 interface. The tool does not click, type into, inject into, or read process memory from RuneScape.
-- Connection to OBS only uses WebSocket `ws://127.0.0.1:4455`, not an external service.
-- Stored OBS password is opt-in in localStorage and unencrypted.
-- OBS normal recording is never started or stopped automatically. **The old manual 5-second recording test button still uses normal OBS recording.**
-- The recorder should be used at your own risk; no endorsement or formal permission is implied.
+- Visual templates depend on UI scale and position; re-calibrate the relevant tier if RuneScape's interface changes.
+- Screen recognition is not infallible. Fast interfaces, graphics transitions, lag, and missing permissions can lead to missed clips. Keep a manual backup for especially rare drops.
+- Different tier templates increase matching work slightly. If Alt1 / RuneScape input responsiveness or lobby issues return, pause detection and compare behavior.
+- A Puzzle casket icon is **not enough** to save a replay; only a reward-window match after a click qualifies. Incorrect reward-window calibration can still lead to false positives.
+- Read-only screen pixels and recent click activity only. No client memory access, code injection, or generated gameplay inputs. No guarantee of Jagex endorsement or official approval.
+- OBS password is saved only if the user opts in, in browser localStorage. Do not upload browser profiles, logs with secrets, or personal files to GitHub.
 
 ## Tests
 
-Run `node test-detector.js` and `node test-replay.js` (Node.js required for tests only). These are simulated tests and cannot guarantee in-game accuracy.
+With Node.js installed, run:
 
-## Repository hygiene
+```powershell
+node test-detector.js
+node test-replay.js
+node test-multitier.js
+```
 
-- Never commit OBS passwords, exports of localStorage, recordings or local log files. The app saves a password to localStorage only if the user opts in; it is **not encrypted**.
-- `launcher.log`, `python-http.*.log`, and recorded videos are ignored by `.gitignore`.
-- This is an independent, unofficial community utility. It is **not endorsed or approved by Jagex, Alt1 or OBS**. Use at your own risk and respect game and software terms.
-- No open-source license is included in this release; publication alone does not grant reuse rights. The repository owner may choose to add a license separately.
+These tests use simulated pixels/OBS messages and do **not** replace testing with a live RuneScape client and OBS installation.
