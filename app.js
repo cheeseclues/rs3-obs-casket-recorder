@@ -7,7 +7,8 @@
   const REROLL_KEY = 'rs3obs-reroll-button-v1';
   const SETTINGS_KEY = 'rs3obs-settings-v04';
   const PASSWORD_KEY = 'rs3obs-obs-password';
-  const MULTI_KEY = 'rs3obs-tier-calibrations-v062';
+  const MULTI_KEY = 'rs3obs-tier-calibrations-v062'; // Keep saved five-tier references intact.
+  const FORMAT_RECOVERY_KEY = 'rs3obs-replay-format-recovery-v063';
   const TIERS = ['easy', 'medium', 'hard', 'elite', 'master'];
   const tierName = tier => tier.charAt(0).toUpperCase() + tier.slice(1);
   const hasCaskets = () => TIERS.some(t => !!casketTemplates[t]);
@@ -26,6 +27,7 @@
   let rewardMissingSamples = 0, lastRewardConfidence = NaN;
   let lastRewardSampleAt = 0, rewardClickBurstUntil = 0;
   let lastRewardIgnoredAt = 0;
+  let lastRewardTierConflictAt = 0;
   let savedPasswordForHandshake = '', pendingRemember = ''; 
   let clickRejectCount = 0, lastStatsAt = 0;
   let lastRewardVisibleAt = 0, lastRerollAt = 0, recordingDeadline = 0;
@@ -46,6 +48,10 @@
   let lastReplayCheck = 0, replayWarningAt = 0, lastReplayPath = '';
   let pendingReplay = false;
   let replaySaveWaiter = null;
+  // The verified tier set belongs to a pending replay batch, not the calibration dropdown.
+  let replayTiers = new Set();
+  let replayOutputName = null;
+  let filenameRecoveryBusy = false;
 
 
   const now = () => performance.now();
@@ -274,16 +280,31 @@
     if(!results.length){$('rewardConfidence').textContent='No reward template in visible area';return;}
     results.sort((a,b)=>b.score-a.score);
     const threshold=Number($('rewardThreshold').value)/100;
-    let result=results[0];
-    // If several tier templates are nearly identical, prefer the most recently
-    // recognized casket's tier. This is a label preference, not an extra trigger.
-    if(pendingCasketCandidateTier){
-      const preferred=results.find(x=>x.tier===pendingCasketCandidateTier && x.score>=threshold && x.score>=result.score-0.01);
+    // Presence is the UNION of calibrated reward templates. A reward window
+    // can look almost identical at different tiers (e.g. Elite 99.6%, Easy
+    // 99.5%). Never treat a change in the highest-scoring template alone as a
+    // new opening or a second tier; keep the first confirmed tier locked until
+    // the reward panel has actually disappeared for two samples.
+    const best=results[0],visible=best.score>=threshold;
+    let result=best;
+    if(rewardWasVisible && activeRewardTier && visible){
+      const locked=results.find(x=>x.tier===activeRewardTier);
+      if(locked && locked.score>=threshold) result=locked;
+      if(best.tier!==activeRewardTier && t-lastRewardTierConflictAt>10000){
+        log(`Overlapping reward templates (${tierName(activeRewardTier)} and ${tierName(best.tier)}); retaining ${tierName(activeRewardTier)} for this open reward. Calibrate distinctive tier details if this repeats.`);
+        lastRewardTierConflictAt=t;
+      }
+    }else if(!rewardWasVisible && pendingCasketCandidateTier){
+      // When a NEW reward window opens, the recently clicked casket is useful
+      // disambiguation if several reward templates match nearly as well.
+      const freshCandidate=pendingCasketCandidateAt>0 && t-pendingCasketCandidateAt<2700;
+      const preferred=freshCandidate && results.find(x=>x.tier===pendingCasketCandidateTier && x.score>=threshold && x.score>=best.score-0.01);
       if(preferred)result=preferred;
     }
-    const {tier,score}=result,visible=score>=threshold;
+    const {tier,score}=result;
     lastRewardConfidence=score;
-    $('rewardConfidence').textContent=`${tierName(tier)} ${(score*100).toFixed(1)}% ${visible?'· MATCH':''}`;
+    const shownTier=(rewardWasVisible&&activeRewardTier&&visible)?activeRewardTier:tier;
+    $('rewardConfidence').textContent=`${tierName(shownTier)} ${(score*100).toFixed(1)}% ${visible?'· MATCH':''}`;
     if(rewardWasVisible===null){
       rewardWasVisible=visible;activeRewardTier=visible?tier:null;
       if(visible)lastRewardVisibleAt=t;
@@ -293,9 +314,12 @@
     }
     if(visible){
       lastRewardVisibleAt=t;rewardMatchingSamples++;rewardMissingSamples=0;
-      const changedTier=rewardWasVisible && activeRewardTier && activeRewardTier!==tier;
-      if(rewardWasVisible&&!changedTier)return;
-      if(!changedTier&&rewardMatchingSamples<2)return;
+      // A still-open reward interface is ONE event, irrespective of how
+      // similarity scores fluctuate between Easy/Medium/Hard/Elite/Master.
+      // A new casket can produce another event after the panel closes and
+      // reappears, or through the separately calibrated reroll-button click.
+      if(rewardWasVisible)return;
+      if(rewardMatchingSamples<2)return;
       rewardWasVisible=true;activeRewardTier=tier;
       $('rewardDetectStatus').textContent=`${tierName(tier)} reward open`;
       const clickAge=Number(alt().rsLastActive);
@@ -309,7 +333,7 @@
       pendingCasketCandidateAt=0;pendingCasketCandidateTier=null;lastDetected=null;
       log(`Verified ${tierName(tier)} Treasure Trails reward (${(score*100).toFixed(1)}%); ${candidateConfirmed?'casket candidate confirmed':'reward-window fallback'}.`);
       setBadge('detectStatus',`${tierName(tier)} reward confirmed`,'armed');
-      handleRewardEvent('reward',`${tierName(tier)} reward-window detection`);
+      handleRewardEvent('reward',`${tierName(tier)} reward-window detection`, tier);
     }else{
       rewardMissingSamples++;rewardMatchingSamples=0;
       if(rewardWasVisible&&rewardMissingSamples>=2){
@@ -389,7 +413,7 @@
       if (time - lastRerollAt < 220) return; // One event per physical click.
       lastRerollAt = time;
       log(`${tierName(rerollTier)} reroll-button click detected while reward window is visible.`);
-      handleRewardEvent('reroll', 'reroll click');
+      handleRewardEvent('reroll', 'reroll click', rerollTier);
       return;
     }
     if (time - lastTriggered < 700) return; // Ignore repeat detection of same opening.
@@ -527,7 +551,9 @@
       request('GetRecordStatus').then(s => {
         $('recordState').textContent = s.outputActive ? 'OBS is already recording' : 'OBS idle';
       }).catch(e => log('GetRecordStatus: ' + errText(e)));
-      checkReplayBuffer(true);
+      // A previous window/connection might have closed during a temporary
+      // filename change. Restore it before any subsequent automatic save.
+      recoverReplayFormat().finally(() => checkReplayBuffer(true));
     } else if (message.op === 5) {
       if (message.d?.eventType === 'ReplayBufferSaved') {
         const path = message.d?.eventData?.savedReplayPath;
@@ -658,8 +684,9 @@
     replayStatus(`Reward detected · saving in ${Math.ceil(wait/1000)} s`);
     replayTimer = setTimeout(savePendingReplay,wait);
   }
-  function queueReplaySave(reason) {
-    if (!pendingReplay) replayBatchStart=now();
+  function queueReplaySave(reason, tier) {
+    if (!pendingReplay) { replayBatchStart=now(); replayTiers.clear(); }
+    if (TIERS.includes(tier)) replayTiers.add(tier);
     replayDeadline=now()+5000;
     const wasPending=pendingReplay;
     pendingReplay=true;
@@ -671,6 +698,137 @@
     log((wasPending ? 'Replay save extended' : 'Reward verified; replay save scheduled') + ': 5 seconds after ' + reason + '.');
     scheduleReplaySave();
   }
+  // OBS 33.0.1 + obs-websocket 5.7.6: a verified format change on the
+  // "Replay Buffer" output takes effect immediately, without stopping it.
+  // This was first tested separately against the user's OBS installation.
+  function replayFilenameBase(tiers) {
+    const labels = TIERS.filter(t => tiers.has(t)).map(tierName);
+    return labels.length ? labels.join(' + ') : 'Unknown';
+  }
+  function replayFilenamePattern(tiers) {
+    return replayFilenameBase(tiers) + ' - %DD.%MM.%CCYY %hh-%mm-%ss';
+  }
+  function savedFormatBackup() {
+    try {
+      const v = JSON.parse(localStorage.getItem(FORMAT_RECOVERY_KEY) || 'null');
+      if (v && typeof v.outputName === 'string' &&
+          typeof v.original === 'string' && typeof v.temporary === 'string') return v;
+    } catch (e) { log('Invalid OBS filename recovery record: ' + errText(e)); }
+    return null;
+  }
+  function forgetFormatBackup() {
+    try { localStorage.removeItem(FORMAT_RECOVERY_KEY); }
+    catch (e) {log('Could not clear OBS format recovery record: ' + errText(e));}
+  }
+  async function locateReplayOutput() {
+    if (replayOutputName) return replayOutputName;
+    const data = await request('GetOutputList');
+    const names = (data.outputs || []).map(o => o.outputName).filter(n => typeof n === 'string');
+    replayOutputName = names.find(n => /^Replay Buffer$/i.test(n)) ||
+                       names.find(n => /replay buffer/i.test(n)) ||
+                       names.find(n => /replay/i.test(n));
+    if (!replayOutputName) throw new Error('OBS Replay Buffer output not found; filename unchanged');
+    return replayOutputName;
+  }
+  async function outputFormat(outputName) {
+    const r = await request('GetOutputSettings', {outputName});
+    const fmt = r.outputSettings?.format;
+    if (typeof fmt !== 'string') throw new Error('OBS did not return outputSettings.format');
+    return fmt;
+  }
+  async function setOutputFormat(outputName, fmt) {
+    await request('SetOutputSettings', {outputName, outputSettings: {format:fmt}});
+    if (await outputFormat(outputName) !== fmt) throw new Error('OBS filename format readback mismatch');
+  }
+  // Leave other apps'/users' settings alone if they've changed the format
+  // since we temporarily set it. A failed restore remains in localStorage.
+  async function recoverReplayFormat() {
+    if (filenameRecoveryBusy || !ready) return false;
+    const backup = savedFormatBackup();
+    if (!backup) return true;
+    filenameRecoveryBusy=true;
+    try {
+      const current = await outputFormat(backup.outputName);
+      if (current === backup.temporary) {
+        await setOutputFormat(backup.outputName, backup.original);
+        log('Recovered original OBS replay filename format from an interrupted save.');
+      } else if (current !== backup.original) {
+        log('OBS filename format was changed externally; leaving the new value untouched.');
+      }
+      forgetFormatBackup();
+      return true;
+    } catch(e) {
+      log('WARNING: Could not restore original OBS filename format: ' + errText(e));
+      return false;
+    } finally { filenameRecoveryBusy=false; }
+  }
+  async function restoreReplayFormatIfUnchanged(outputName, original, temporary) {
+    const current = await outputFormat(outputName);
+    if (current === temporary) {
+      await setOutputFormat(outputName, original);
+      log('Original OBS replay filename format restored.');
+    } else if (current !== original) {
+      // Another OBS client or the user changed it while the save was pending.
+      log('OBS replay filename format changed externally; not overriding it.');
+    }
+    forgetFormatBackup();
+  }
+  // A naming failure MUST NEVER prevent the actual replay from being saved.
+  // Temporarily change the OBS output format, save/confirm the file, and
+  // restore the exact previous format even if the save itself fails.
+  async function saveReplayWithTierName(tiers) {
+    let name=null, original=null, changed=false;
+    const base=replayFilenameBase(tiers), target=replayFilenamePattern(tiers);
+    const recoveryOk=await recoverReplayFormat();
+    try {
+      if (!recoveryOk) throw new Error('Unresolved earlier filename restore error');
+      name=await locateReplayOutput();
+      original=await outputFormat(name);
+      if (original !== target) {
+        // Persistence happens before the OBS change. It is intentionally kept
+        // until restoration is verified, including across application restarts.
+        localStorage.setItem(FORMAT_RECOVERY_KEY, JSON.stringify({outputName:name, original, temporary:target}));
+        // If OBS changed but the request/readback times out, the finally block
+        // still attempts the original format restore.
+        changed=true;
+        await setOutputFormat(name,target);
+      }
+      log('Replay filename temporarily set to: ' + target);
+    } catch (e) {
+      log('WARNING: Tier filename unavailable; saving replay with OBS default naming: ' + errText(e));
+      // If the change was partially applied, we must restore it before saving
+      // with the normal filename to avoid an unanticipated naming side effect.
+      if (changed) {
+        try { await restoreReplayFormatIfUnchanged(name,original,target); changed=false; }
+        catch (restoreError) {
+          log('WARNING: OBS filename restore pending: ' + errText(restoreError));
+          // The backup stays available for reconnect/retry.
+        }
+      }
+    }
+    let path;
+    try {
+      path=await saveReplayAndConfirm();
+      if (path && changed) {
+        const filename=path.split(/[\\/]/).pop();
+        if (filename.startsWith(base+' - ') && /\d{2}\.\d{2}\.\d{4}/.test(filename)) {
+          log('Finnish-date tier filename confirmed: ' + filename);
+        } else {
+          log('CHECK: OBS saved replay, but filename did not match tier/date pattern: ' + filename);
+        }
+      }
+      return path;
+    } finally {
+      if (changed) {
+        try {
+          await restoreReplayFormatIfUnchanged(name,original,target);
+        } catch(e) {
+          log('WARNING: OBS filename restore FAILED; automatic recovery will retry: ' + errText(e));
+        }
+      }
+    }
+  }
+
   // OBS accepts SaveReplayBuffer before the file is necessarily finished.
   // GetLastReplayBufferReplay may therefore still report a PREVIOUS replay.
   // Wait for the Outputs.ReplayBufferSaved event (or a changed path on fallback).
@@ -727,14 +885,15 @@
     if (!ready || !replayActive) {
       replayStatus('Cannot save — OBS Replay Buffer offline');
       log('REPLAY SAVE ERROR: OBS buffer not running; cannot save this reward.');
-      pendingReplay=false;replayDeadline=0;replayBatchStart=0;
+      pendingReplay=false;replayDeadline=0;replayBatchStart=0;replayTiers.clear();
       return;
     }
     replaySaving=true;updateControls();
     const latestDeadline=replayDeadline;
     const wasIntermediate=now()+50 < latestDeadline;
     try {
-      const confirmedPath = await saveReplayAndConfirm();
+      const tiersForThisReplay = new Set(replayTiers);
+      const confirmedPath = await saveReplayWithTierName(tiersForThisReplay);
       if (confirmedPath) {
         log(wasIntermediate ? 'Intermediate replay file confirmed; further rewards may be in overlapping files.' : 'Reward replay file confirmed after final 5-second wait.');
       }
@@ -745,7 +904,7 @@
         pendingReplay=true;
         scheduleReplaySave();
       } else {
-        pendingReplay=false;replayDeadline=0;replayBatchStart=0;
+        pendingReplay=false;replayDeadline=0;replayBatchStart=0;replayTiers.clear();
         replayStatus('Buffer running · ready for next reward');
       }
     } catch(e) {
@@ -756,7 +915,7 @@
       scheduleReplaySave();
     } finally {replaySaving=false;updateControls();}
   }
-  function handleRewardEvent(mode, reason) {
+  function handleRewardEvent(mode, reason, tier = null) {
     if (!$('liveRecord').checked) {
       log('DETECTION ONLY: ' + reason + ' confirmed; no replay saved.');
       return;
@@ -765,7 +924,7 @@
       log('Verified ' + reason + ', but OBS is disconnected; replay not available.');
       return;
     }
-    queueReplaySave(reason);
+    queueReplaySave(reason, tier);
   }
   async function stopRecording() {
     if (!recordingByUs || stoppingByUs) return;
@@ -911,9 +1070,9 @@
     if (socket && !recordingByUs) socket.close();
   });
 
-  log('v0.6.2 loaded. Five-tier casket/reward calibration, Replay Buffer save confirmation, Puzzle casket protection.');
+  log('v0.6.4 loaded. Tier attribution locked per reward window; Finnish filenames and replay saving preserved.');
   if (alt() && typeof alt().identifyAppUrl === 'function') {
-    try { alt().identifyAppUrl('http://127.0.0.1:8091/appconfig-v0.6.2.json'); }
+    try { alt().identifyAppUrl('http://127.0.0.1:8091/appconfig-v0.6.4.json'); }
     catch(e) { log('Alt1 app registration error: ' + errText(e)); }
   }
   refreshPermissions();

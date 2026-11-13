@@ -63,6 +63,29 @@ async function invoke(id,type='click'){const h=handlers.get(id+':'+type);assert.
   resetScreen();place(patch.easyR,276,186);lastClickAt=t;await tick(780);
   assert.equal(context.__test.getActiveRewardTier(),'easy');
   assert.match(elements.get('log').textContent,/Verified Easy Treasure Trails reward/);
+  // Regression: an already-open Easy reward also scores very highly against
+  // the Elite template. The higher-scoring tier flips repeatedly while
+  // RuneScape is clicked, but MUST NOT create a phantom Elite reward.
+  const matcher=context.window.CasketMatcher;
+  const originalMatch=matcher.bestMatch;
+  let overlapMode='overlap';
+  matcher.bestMatch=(template,...args)=>{
+    const refs=context.__test.calibrations().rewardTemplates;
+    if(template===refs.easy){return overlapMode==='overlap'?0.995:0.20;}
+    if(template===refs.elite){return overlapMode==='closed'?0.20:0.997;}
+    return originalMatch(template,...args);
+  };
+  const earlierElite=(elements.get('log').textContent.match(/Verified Elite Treasure Trails reward/g)||[]).length;
+  lastClickAt=t;await tick(1550);
+  assert.equal(context.__test.getActiveRewardTier(),'easy','tier locked for the existing Easy reward window');
+  assert.equal((elements.get('log').textContent.match(/Verified Elite Treasure Trails reward/g)||[]).length,earlierElite,'no phantom Elite event during one Easy panel');
+  assert.match(elements.get('log').textContent,/Overlapping reward templates/,'overlap observed without triggering a reward');
+  overlapMode='closed';await tick(1450);
+  assert.equal(context.__test.getActiveRewardTier(),null,'reward panel rearmed only after closing');
+  overlapMode='elite';lastClickAt=t;await tick(900);
+  assert.equal(context.__test.getActiveRewardTier(),'elite','new Elite panel can be recognized after close');
+  assert.equal((elements.get('log').textContent.match(/Verified Elite Treasure Trails reward/g)||[]).length,earlierElite+1,'real subsequent Elite opening verified once');
+  matcher.bestMatch=originalMatch;
   // Do not record merely because the reward panel is already open at startup.
   context.__test.stopWatching();await tick(500);context.__test.startWatching();
   const before=elements.get('log').textContent.match(/Verified Easy Treasure Trails reward/g)?.length||0;

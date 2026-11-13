@@ -1,8 +1,15 @@
-# RS3 OBS Casket Recorder v0.6.2 — All five clue tiers
+# RS3 OBS Casket Recorder v0.6.4 — Finnish-date tier filenames
 
 Alt1 reads RuneScape screen pixels and observes real player clicks. When a calibrated Treasure Trails **reward interface** appears after a player click, the application asks OBS Studio to save its Replay Buffer **five seconds after the last recognized reward or reroll**. The saved replay includes moments before the opening. **The application never clicks or controls RuneScape**.
 
-## What's new in v0.6.2
+## What's new in v0.6.4
+
+- **Automatic tier-based Finnish replay names**, confirmed against OBS 33.0.1 / WebSocket 5.7.6 in a prior isolated test. Example: `Elite - 13.11.2026 20-46-05.mp4`. Multiple verified tiers in one pending batch become `Elite + Master - 13.11.2026 20-46-05.mp4` (ordered Easy → Master). If the tier is not confidently identified, the name is `Unknown - ...`; no tier is guessed from the UI calibration selection.
+- Saves and checks the current Replay Buffer output `format` before changing it. Immediately after `ReplayBufferSaved` confirmation (or a save error), restores the exact previous format. An interrupted temporary change is kept in a localStorage **recovery record** and restoration is attempted on OBS reconnect. If naming fails, the replay is still saved using OBS's available format.
+- The replay file name represents tiers detected in the current logical save batch, not necessarily every older reward visible in the 20–60 second pre-roll. When a long chain creates intermediate saves, later names list every tier seen so far in that chain.
+- This is still an Alt1 browser app: it **does not rename files on disk** and it doesn't change OBS's global recording filename setting. No other software or Windows helper required.
+
+
 
 - Separate casket-icon and reward-window image calibrations for **Easy, Medium, Hard, Elite and Master**. All calibrated tiers are monitored automatically; the selected tier only controls **which calibration to add or clear**.
 - Each tier can have an optional separately calibrated Reroll button position.
@@ -16,11 +23,11 @@ Alt1 reads RuneScape screen pixels and observes real player clicks. When a calib
 1. Close any older RS3 OBS Casket Recorder Alt1 windows.
 2. Stop the old Python HTTP server on port 8091, if running. (Ctrl+C in its PowerShell window.)
 3. Extract ZIP **root contents** into your existing recorder folder, overwriting the old files. Do not nest the new folder inside the old one.
-4. Double-click **Launch-Recorder.cmd** (Python 3.12+ required). It uses port 8091 and opens `recorder-v0.6.2.html` inside Alt1.
-5. Check the banner says `ALT1 + OBS · V0.6.2` and the activity log says `v0.6.2 loaded` and `Existing v0.6.1 calibration imported as Elite` on first startup.
+4. Double-click **Launch-Recorder.cmd** (Python 3.12+ required). It uses port 8091 and opens `recorder-v0.6.4.html` inside Alt1.
+5. Check the banner says `ALT1 + OBS · V0.6.4` and the activity log says `v0.6.4 loaded` and `Existing v0.6.1 calibration imported as Elite` on first startup (if migrating directly from v0.6.1).
 6. Set **Calibration tier** to Easy, Medium, Hard or Master; perform each tier's calibration as described below. Elite should already show `✓` for previously saved references.
 
-Manual Alt1 URL: `alt1://browser/http://127.0.0.1:8091/recorder-v0.6.2.html`
+Manual Alt1 URL: `alt1://browser/http://127.0.0.1:8091/recorder-v0.6.4.html`
 
 **Important:** Calibration data lives in Alt1 browser localStorage for `http://127.0.0.1:8091`. Don't change the host to `localhost` or the port if you want to retain your saved references/password. Keep the older app folder backed up until the new version has been verified in-game.
 
@@ -64,3 +71,12 @@ node test-multitier.js
 ```
 
 These tests use simulated pixels/OBS messages and do **not** replace testing with a live RuneScape client and OBS installation.
+
+
+## v0.6.4: prevent cross-tier false positives
+
+When the same reward panel resembles several calibrated tier templates (e.g. Elite at 99.6% and Easy at 99.5%), the detector now **locks the initially verified tier for the entire visible reward-window session**. It no longer counts a best-match tier flip as a new opening. A new reward window must close and reappear (two consecutive absent samples), or a calibrated reroll can extend a pending replay.
+
+A recent casket click can disambiguate the tier when a *new* reward window first appears; otherwise the best matching reward template is used. For accurate tier naming, calibrate a visually distinctive tier-specific region, not a shared decoration.
+
+Known limit: extremely fast consecutive openings without any detectable reward-panel disappearance might not generate separate reward events; OBS Replay Buffer remains the backup.

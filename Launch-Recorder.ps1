@@ -1,10 +1,10 @@
-﻿# RS3 OBS Casket Recorder - Launcher hotfix v0.6.2 (Windows PowerShell 5.1+)
+﻿# RS3 OBS Casket Recorder - Launcher hotfix v0.6.4 (Windows PowerShell 5.1+)
 # Starts a LOCAL Python HTTP server only if one is not already serving this app.
 $ErrorActionPreference = 'Stop'
 $folder = Split-Path -Parent $MyInvocation.MyCommand.Path
 $port = 8091
-$url = "http://127.0.0.1:$port/recorder-v0.6.2.html"
-$expectedMarker = 'launcher-build-v0.6.2'
+$url = "http://127.0.0.1:$port/recorder-v0.6.4.html"
+$expectedMarker = 'launcher-build-v0.6.4'
 $launcherLog = Join-Path $folder 'launcher.log'
 
 function Write-LauncherLog([string]$message) {
@@ -34,11 +34,11 @@ function Test-RecorderServer {
 }
 
 try {
-  Write-LauncherLog 'Starting RS3 Casket Recorder launcher v0.6.2...'
+  Write-LauncherLog 'Starting RS3 Casket Recorder launcher v0.6.4...'
   if (-not (Test-RecorderServer)) {
     $listeners = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
     if ($listeners.Count -gt 0) {
-      throw "Port $port is already occupied, but it is not serving v0.6.2 correctly. Close the old Python server, then launch again."
+      throw "Port $port is already occupied, but it is not serving v0.6.4 correctly. Close the old Python server, then launch again."
     }
 
     $pythonCmd = Get-Command python.exe -ErrorAction SilentlyContinue
@@ -65,7 +65,7 @@ try {
       if (Test-Path -LiteralPath $errLog) {
         $detail = ((Get-Content -LiteralPath $errLog -Tail 5 -ErrorAction SilentlyContinue) -join ' | ')
       }
-      throw ("Python server failed to serve v0.6.2 at $url. " + $detail)
+      throw ("Python server failed to serve v0.6.4 at $url. " + $detail)
     }
     Write-LauncherLog ("Python HTTP server ready; PID " + $process.Id)
   } else {
@@ -73,7 +73,7 @@ try {
   }
 
   Write-LauncherLog 'Opening Alt1 application...'
-  Start-Process 'alt1://browser/http://127.0.0.1:8091/recorder-v0.6.2.html'
+  Start-Process 'alt1://browser/http://127.0.0.1:8091/recorder-v0.6.4.html'
   Write-LauncherLog 'Launcher completed. The HTTP server keeps running in the background.'
 } catch {
   Write-Host ''

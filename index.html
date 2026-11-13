@@ -1,18 +1,18 @@
 <!doctype html>
-<!-- launcher-build-v0.6.2 -->
+<!-- launcher-build-v0.6.4 -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://127.0.0.1:4455; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
-  <title>RS3 OBS Casket Recorder · v0.6.2</title>
-  <link rel="icon" href="icon.png"><link rel="stylesheet" href="style-v0.6.2.css">
-  <script src="detector-v0.6.2.js" defer></script><script src="app-v0.6.2.js" defer></script>
+  <title>RS3 OBS Casket Recorder · v0.6.4</title>
+  <link rel="icon" href="icon.png"><link rel="stylesheet" href="style-v0.6.4.css">
+  <script src="detector-v0.6.4.js" defer></script><script src="app-v0.6.4.js" defer></script>
 </head>
 <body>
 <main>
   <header>
-    <div class="eyebrow">ALT1 + OBS · V0.6.2</div>
+    <div class="eyebrow">ALT1 + OBS · V0.6.4</div>
     <h1>RS3 Casket Recorder</h1>
     <p>OBS Replay Buffer continuously retains the recent game footage, including BEFORE you open a casket. Alt1 saves a replay only after a verified Treasure Trails reward, never just a Puzzle casket click. Rerolls and subsequent rewards postpone saving until five seconds after the latest event. No RuneScape inputs are generated.</p>
   </header>
@@ -40,6 +40,7 @@
     <input id="replaySeconds" type="number" min="20" max="180" step="1" value="60">
     <label class="checkrow"><input id="autoBuffer" type="checkbox" checked> <span>Start/restore OBS Replay Buffer automatically</span></label>
     <div class="buttons"><button id="bufferStart" class="secondary" disabled>Start Replay Buffer</button><button id="bufferSaveTest" class="secondary" disabled>Test: Save replay now</button></div>
+    <p><strong>Automatic filenames:</strong> Verified tiers are combined, e.g. <code>Elite + Master - 13.11.2026 20-46-05.mp4</code>. The app temporarily updates OBS Replay Buffer output naming, then restores the original format. If OBS rejects the name change, it still saves the replay under the default name.</p>
     <small>OBS saves the entire replay window (up to 60 s), not a trimmed five-second clip. Long sequences are split into potentially overlapping replay saves before the earliest footage could expire. Do not close this window during a pending reward save. Replay Buffer continuously encodes footage, which may add GPU load.</small>
   </section>
   <section class="panel">
